@@ -1,6 +1,6 @@
 use anyhow::Result;
 use eframe::{egui, NativeOptions};
-use egui::{Key, Modifiers};
+use egui::Key;
 use std::{fs, path::PathBuf};
 
 #[derive(Default)]
@@ -54,39 +54,39 @@ impl Default for App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Shortcuts
-        let input = ctx.input(|i| i.clone());
-        let ctrl = input.modifiers.matches(Modifiers { ctrl: true, ..Default::default() });
-        if ctrl && input.key_pressed(Key::O) {
-            self.open_dialog(true);
-        }
-        if ctrl && input.key_pressed(Key::S) {
-            self.save_current(false);
-        }
-        if ctrl && input.key_pressed(Key::ShiftS) {
-            self.save_current(true);
-        }
-
-        // Top menu
-        egui::TopBottomPanel::top("menu").show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Open (Ctrl+O)").clicked() { self.open_dialog(true); }
-                if ui.button("Save (Ctrl+S)").clicked() { self.save_current(false); }
-                if ui.button("Save As (Ctrl+Shift+S)").clicked() { self.save_current(true); }
-                ui.separator();
-                ui.label(&self.status);
-            });
-        });
-
-        // Left / right panes
-        egui::SidePanel::left("left").resizable(true).default_width(420.0).show(ctx, |ui| {
-            pane_widget(ui, &mut self.left);
-        });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            pane_widget(ui, &mut self.right);
-        });
+fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    // Shortcuts
+    let input = ctx.input(|i| i.clone());
+    let ctrl = input.modifiers.matches_logically(egui::Modifiers { ctrl: true, ..Default::default() });
+    if ctrl && input.key_pressed(egui::Key::O) {
+        self.open_dialog(true);
     }
+    if ctrl && input.key_pressed(egui::Key::S) {
+        self.save_current(false);
+    }
+    if ctrl && input.modifiers.shift && input.key_pressed(egui::Key::S) {
+        self.save_current(true);
+    }
+
+    // Top menu
+    egui::TopBottomPanel::top("menu").show(ctx, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Open (Ctrl+O)").clicked() { self.open_dialog(true); }
+            if ui.button("Save (Ctrl+S)").clicked() { self.save_current(false); }
+            if ui.button("Save As (Ctrl+Shift+S)").clicked() { self.save_current(true); }
+            ui.separator();
+            ui.label(&self.status);
+        });
+    });
+
+    // Left / right panes
+    egui::SidePanel::left("left").resizable(true).default_width(420.0).show(ctx, |ui| {
+        pane_widget(ui, &mut self.left);
+    });
+    egui::CentralPanel::default().show(ctx, |ui| {
+        pane_widget(ui, &mut self.right);
+    });
+}
 }
 
 fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane) {
@@ -107,9 +107,9 @@ fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane) {
 impl App {
     fn save_current(&mut self, force_as: bool) {
         // Simple rule: save the pane that currently has focus, else left
-        let left_focused = egui::Context::default(); // placeholder; we’ll pick left by default
+        let _left_focused = egui::Context::default(); // placeholder; we’ll pick left by default
         let target = &mut self.left; // keep it simple; you can add focus tracking later
-        let mut picker = || {
+        let picker = || {
             rfd::FileDialog::new()
                 .set_title("Save As")
                 .add_filter("Text/Markdown", &["txt", "md", "log"])
@@ -149,6 +149,7 @@ impl App {
 
 fn main() -> Result<()> {
     let opts = NativeOptions::default();
-    eframe::run_native("Eliza Notes (egui)", opts, Box::new(|_| Box::new(App::default())))?;
+    eframe::run_native("Eliza Notes (egui)", opts, Box::new(|_| Box::new(App::default())))
+        .map_err(|e| anyhow::anyhow!("eframe error: {}", e))?;
     Ok(())
 }
