@@ -267,6 +267,27 @@ impl App {
         } else {
             ("right", &mut self.right)
         };
+
+        let mut quick_save_dir = std::env::current_dir()
+            .map(|dir| dir.join("target").join("quick_saves"))
+            .unwrap_or_else(|_| std::env::temp_dir().join("nust_quick_saves"));
+        if let Err(primary_err) = fs::create_dir_all(&quick_save_dir) {
+            let fallback_dir = std::env::temp_dir().join("nust_quick_saves");
+            if quick_save_dir != fallback_dir {
+                match fs::create_dir_all(&fallback_dir) {
+                    Ok(_) => quick_save_dir = fallback_dir,
+                    Err(fallback_err) => {
+                        self.status = format!(
+                            "Quick save failed: {primary_err}; fallback failed: {fallback_err}"
+                        );
+                        return;
+                    }
+                }
+            } else {
+                self.status = format!("Quick save failed: {primary_err}");
+                return;
+            }
+        }
         
         // Quick save without file dialog - save to a timestamped file
         let timestamp = std::time::SystemTime::now()
@@ -274,12 +295,16 @@ impl App {
             .unwrap()
             .as_secs();
         let filename = format!("nust_{}_{}.txt", pane_name, timestamp);
-        let save_path = std::path::PathBuf::from(filename);
+        let save_path = quick_save_dir.join(filename);
         
         self.status = format!("Quick saving {} pane to {}...", pane_name, save_path.display());
         
-        match target.save_as(save_path) {
-            Ok(_) => self.status = format!("{} pane quick save successful!", pane_name),
+        match target.save_as(save_path.clone()) {
+            Ok(_) => self.status = format!(
+                "{} pane quick save successful: {}",
+                pane_name,
+                save_path.display()
+            ),
             Err(e) => self.status = format!("Quick save failed: {e}"),
         };
     }
