@@ -1,0 +1,155 @@
+   Compiling nust v0.1.0 (/home/nemod/eliza/dev/nust/nust)
+error[E0499]: cannot borrow `*self` as mutable more than once at a time
+  --> src/main.rs:77:60
+   |
+77 |             if ui.button("Save Left (Ctrl+S)").clicked() { self.save_pane(&mut self.left, false); }
+   |                                                            ^^^^^---------^--------------^^^^^^^^
+   |                                                            |    |         |
+   |                                                            |    |         first mutable borrow occurs here
+   |                                                            |    first borrow later used by call
+   |                                                            second mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self.left` as mutable more than once at a time
+  --> src/main.rs:77:75
+   |
+77 |             if ui.button("Save Left (Ctrl+S)").clicked() { self.save_pane(&mut self.left, false); }
+   |                                                            ---- --------- ^^^^^^^^^^^^^^ second mutable borrow occurs here
+   |                                                            |    |
+   |                                                            |    first borrow later used by call
+   |                                                            first mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self` as mutable more than once at a time
+  --> src/main.rs:78:52
+   |
+78 |             if ui.button("Save Right").clicked() { self.save_pane(&mut self.right, false); }
+   |                                                    ^^^^^---------^---------------^^^^^^^^
+   |                                                    |    |         |
+   |                                                    |    |         first mutable borrow occurs here
+   |                                                    |    first borrow later used by call
+   |                                                    second mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self.right` as mutable more than once at a time
+  --> src/main.rs:78:67
+   |
+78 |             if ui.button("Save Right").clicked() { self.save_pane(&mut self.right, false); }
+   |                                                    ---- --------- ^^^^^^^^^^^^^^^ second mutable borrow occurs here
+   |                                                    |    |
+   |                                                    |    first borrow later used by call
+   |                                                    first mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self` as mutable more than once at a time
+  --> src/main.rs:79:54
+   |
+79 |             if ui.button("Save As Left").clicked() { self.save_pane(&mut self.left, true); }
+   |                                                      ^^^^^---------^--------------^^^^^^^
+   |                                                      |    |         |
+   |                                                      |    |         first mutable borrow occurs here
+   |                                                      |    first borrow later used by call
+   |                                                      second mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self.left` as mutable more than once at a time
+  --> src/main.rs:79:69
+   |
+79 |             if ui.button("Save As Left").clicked() { self.save_pane(&mut self.left, true); }
+   |                                                      ---- --------- ^^^^^^^^^^^^^^ second mutable borrow occurs here
+   |                                                      |    |
+   |                                                      |    first borrow later used by call
+   |                                                      first mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self` as mutable more than once at a time
+  --> src/main.rs:80:55
+   |
+80 |             if ui.button("Save As Right").clicked() { self.save_pane(&mut self.right, true); }
+   |                                                       ^^^^^---------^---------------^^^^^^^
+   |                                                       |    |         |
+   |                                                       |    |         first mutable borrow occurs here
+   |                                                       |    first borrow later used by call
+   |                                                       second mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self.right` as mutable more than once at a time
+  --> src/main.rs:80:70
+   |
+80 |             if ui.button("Save As Right").clicked() { self.save_pane(&mut self.right, true); }
+   |                                                       ---- --------- ^^^^^^^^^^^^^^^ second mutable borrow occurs here
+   |                                                       |    |
+   |                                                       |    first borrow later used by call
+   |                                                       first mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self` as mutable more than once at a time
+  --> src/main.rs:81:57
+   |
+81 |             if ui.button("Quick Save Left").clicked() { self.quick_save_pane(&mut self.left); }
+   |                                                         ^^^^^---------------^--------------^
+   |                                                         |    |               |
+   |                                                         |    |               first mutable borrow occurs here
+   |                                                         |    first borrow later used by call
+   |                                                         second mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self.left` as mutable more than once at a time
+  --> src/main.rs:81:78
+   |
+81 |             if ui.button("Quick Save Left").clicked() { self.quick_save_pane(&mut self.left); }
+   |                                                         ---- --------------- ^^^^^^^^^^^^^^ second mutable borrow occurs here
+   |                                                         |    |
+   |                                                         |    first borrow later used by call
+   |                                                         first mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self` as mutable more than once at a time
+  --> src/main.rs:82:58
+   |
+82 |             if ui.button("Quick Save Right").clicked() { self.quick_save_pane(&mut self.right); }
+   |                                                          ^^^^^---------------^---------------^
+   |                                                          |    |               |
+   |                                                          |    |               first mutable borrow occurs here
+   |                                                          |    first borrow later used by call
+   |                                                          second mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self.right` as mutable more than once at a time
+  --> src/main.rs:82:79
+   |
+82 |             if ui.button("Quick Save Right").clicked() { self.quick_save_pane(&mut self.right); }
+   |                                                          ---- --------------- ^^^^^^^^^^^^^^^ second mutable borrow occurs here
+   |                                                          |    |
+   |                                                          |    first borrow later used by call
+   |                                                          first mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self` as mutable more than once at a time
+  --> src/main.rs:66:9
+   |
+66 |         self.save_pane(&mut self.left, false);
+   |         ^^^^^---------^--------------^^^^^^^^
+   |         |    |         |
+   |         |    |         first mutable borrow occurs here
+   |         |    first borrow later used by call
+   |         second mutable borrow occurs here
+
+error[E0499]: cannot borrow `self.left` as mutable more than once at a time
+  --> src/main.rs:66:24
+   |
+66 |         self.save_pane(&mut self.left, false);
+   |         ---- --------- ^^^^^^^^^^^^^^ second mutable borrow occurs here
+   |         |    |
+   |         |    first borrow later used by call
+   |         first mutable borrow occurs here
+
+error[E0499]: cannot borrow `*self` as mutable more than once at a time
+  --> src/main.rs:69:9
+   |
+69 |         self.save_pane(&mut self.left, true);
+   |         ^^^^^---------^--------------^^^^^^^
+   |         |    |         |
+   |         |    |         first mutable borrow occurs here
+   |         |    first borrow later used by call
+   |         second mutable borrow occurs here
+
+error[E0499]: cannot borrow `self.left` as mutable more than once at a time
+  --> src/main.rs:69:24
+   |
+69 |         self.save_pane(&mut self.left, true);
+   |         ---- --------- ^^^^^^^^^^^^^^ second mutable borrow occurs here
+   |         |    |
+   |         |    first borrow later used by call
+   |         first mutable borrow occurs here
+
+For more information about this error, try `rustc --explain E0499`.
+error: could not compile `nust` (bin "nust") due to 16 previous errors
