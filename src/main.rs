@@ -1,5 +1,8 @@
 use anyhow::Result;
-use eframe::{NativeOptions, egui};
+use eframe::{
+    NativeOptions,
+    egui::{self, KeyboardShortcut, Modifiers},
+};
 use std::{fs, path::PathBuf};
 
 #[derive(Default)]
@@ -53,12 +56,51 @@ struct App {
     save_as_path: String,
     show_save_as_input: bool,
     show_split_view: bool,
+    actions: Vec<Action>,
+    show_command_palette: bool,
+    command_palette_query: String,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum FocusedPane {
     Left,
     Right,
+}
+
+#[derive(Clone, Copy)]
+struct Action {
+    id: &'static str,
+    label: &'static str,
+    shortcut: Option<KeyboardShortcut>,
+    action: AppAction,
+}
+
+impl Action {
+    const fn new(
+        id: &'static str,
+        label: &'static str,
+        shortcut: Option<KeyboardShortcut>,
+        action: AppAction,
+    ) -> Self {
+        Self {
+            id,
+            label,
+            shortcut,
+            action,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum AppAction {
+    OpenFile,
+    SaveFocused,
+    SaveAsFocused,
+    QuickSaveFocused,
+    CloseFocused,
+    ShowSplitView,
+    ShowLeftOnly,
+    ShowRightOnly,
 }
 
 impl Default for App {
@@ -78,27 +120,16 @@ impl Default for App {
             save_as_path: "".into(),
             show_save_as_input: false,
             show_split_view: true,
+            actions: Self::registered_actions(),
+            show_command_palette: false,
+            command_palette_query: String::new(),
         }
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Shortcuts
-        let input = ctx.input(|i| i.clone());
-        let ctrl = input.modifiers.matches_logically(egui::Modifiers {
-            ctrl: true,
-            ..Default::default()
-        });
-        if ctrl && input.key_pressed(egui::Key::O) {
-            self.open_dialog(self.focused_pane == FocusedPane::Left);
-        }
-        if ctrl && input.key_pressed(egui::Key::S) {
-            self.save_focused(false);
-        }
-        if ctrl && input.modifiers.shift && input.key_pressed(egui::Key::S) {
-            self.save_focused(true);
-        }
+        self.process_shortcuts(ctx);
 
         // Top menu
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
@@ -112,31 +143,11 @@ impl eframe::App for App {
                 if ui.button("Save As (Ctrl+Shift+S)").clicked() {
                     self.save_as_focused();
                 }
-                if ui.button("Quick Save").clicked() {
+                if ui.button("Quick Save (Ctrl+Alt+S)").clicked() {
                     self.quick_save_focused();
                 }
-                if ui
-                    .button(if self.show_split_view {
-                        "Single Pane"
-                    } else {
-                        "Split View"
-                    })
-                    .clicked()
-                {
-                    self.toggle_view_mode();
-                }
-                ui.separator();
-                if ui
-                    .radio_value(&mut self.focused_pane, FocusedPane::Left, "Show Left")
-                    .clicked()
-                {
-                    self.status = "Left pane focused".into();
-                }
-                if ui
-                    .radio_value(&mut self.focused_pane, FocusedPane::Right, "Show Right")
-                    .clicked()
-                {
-                    self.status = "Right pane focused".into();
+                if ui.button("Close (Ctrl+W)").clicked() {
+                    self.close_focused();
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -231,7 +242,29 @@ impl eframe::App for App {
                 }
             });
         }
+
+        if self.show_command_palette {
+            self.command_palette_ui(ctx);
+        }
     }
+}
+
+fn format_shortcut(shortcut: &KeyboardShortcut) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if shortcut.modifiers.ctrl {
+        parts.push("Ctrl".into());
+    }
+    if shortcut.modifiers.shift {
+        parts.push("Shift".into());
+    }
+    if shortcut.modifiers.alt {
+        parts.push("Alt".into());
+    }
+    if shortcut.modifiers.mac_cmd {
+        parts.push("Cmd".into());
+    }
+    parts.push(format!("{:?}", shortcut.logical_key));
+    parts.join("+")
 }
 
 fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane) -> bool {
@@ -255,6 +288,218 @@ fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane) -> bool {
 }
 
 impl App {
+    fn registered_actions() -> Vec<Action> {
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Default::default()
+        };
+        let ctrl_shift = Modifiers {
+            ctrl: true,
+            shift: true,
+            ..Default::default()
+        };
+        let ctrl_alt = Modifiers {
+            ctrl: true,
+            alt: true,
+            ..Default::default()
+        };
+        vec![
+            Action::new(
+                "open_file",
+                "Open File (Focused Pane)",
+                Some(KeyboardShortcut::new(ctrl, egui::Key::O)),
+                AppAction::OpenFile,
+            ),
+            Action::new(
+                "save_file",
+                "Save",
+                Some(KeyboardShortcut::new(ctrl, egui::Key::S)),
+                AppAction::SaveFocused,
+            ),
+            Action::new(
+                "save_file_as",
+                "Save As",
+                Some(KeyboardShortcut::new(ctrl_shift, egui::Key::S)),
+                AppAction::SaveAsFocused,
+            ),
+            Action::new(
+                "quick_save",
+                "Quick Save",
+                Some(KeyboardShortcut::new(ctrl_alt, egui::Key::S)),
+                AppAction::QuickSaveFocused,
+            ),
+            Action::new(
+                "close_file",
+                "Close File (Focused Pane)",
+                Some(KeyboardShortcut::new(ctrl, egui::Key::W)),
+                AppAction::CloseFocused,
+            ),
+            Action::new(
+                "layout_split",
+                "Show Split View",
+                Some(KeyboardShortcut::new(ctrl, egui::Key::Num3)),
+                AppAction::ShowSplitView,
+            ),
+            Action::new(
+                "layout_left",
+                "Show Left Only",
+                Some(KeyboardShortcut::new(ctrl, egui::Key::Num1)),
+                AppAction::ShowLeftOnly,
+            ),
+            Action::new(
+                "layout_right",
+                "Show Right Only",
+                Some(KeyboardShortcut::new(ctrl, egui::Key::Num2)),
+                AppAction::ShowRightOnly,
+            ),
+        ]
+    }
+
+    fn command_palette_shortcut() -> KeyboardShortcut {
+        KeyboardShortcut::new(
+            Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            egui::Key::P,
+        )
+    }
+
+    fn process_shortcuts(&mut self, ctx: &egui::Context) {
+        if ctx.input_mut(|i| i.consume_shortcut(&Self::command_palette_shortcut())) {
+            if self.show_command_palette {
+                self.close_command_palette();
+                self.status = "Command palette closed".into();
+            } else {
+                self.open_command_palette();
+            }
+        }
+
+        if self.show_command_palette {
+            return;
+        }
+
+        let actions: Vec<Action> = self.actions.iter().copied().collect();
+        for action in actions {
+            if let Some(shortcut) = action.shortcut {
+                if ctx.input_mut(|i| i.consume_shortcut(&shortcut)) {
+                    self.perform_action(action.action);
+                }
+            }
+        }
+    }
+
+    fn open_command_palette(&mut self) {
+        self.show_command_palette = true;
+        self.command_palette_query.clear();
+        self.status = "Command palette opened (Ctrl+Shift+P or Esc to close)".into();
+    }
+
+    fn close_command_palette(&mut self) {
+        self.show_command_palette = false;
+        self.command_palette_query.clear();
+    }
+
+    fn perform_action(&mut self, action: AppAction) {
+        match action {
+            AppAction::OpenFile => {
+                self.open_dialog(self.focused_pane == FocusedPane::Left);
+            }
+            AppAction::SaveFocused => {
+                self.save_focused(false);
+            }
+            AppAction::SaveAsFocused => {
+                self.save_focused(true);
+            }
+            AppAction::QuickSaveFocused => {
+                self.quick_save_focused();
+            }
+            AppAction::CloseFocused => {
+                self.close_focused();
+            }
+            AppAction::ShowSplitView => {
+                if !self.show_split_view {
+                    self.show_split_view = true;
+                    self.status = "Split view enabled".into();
+                } else {
+                    self.status = "Split view already active".into();
+                }
+            }
+            AppAction::ShowLeftOnly => {
+                self.show_split_view = false;
+                self.focused_pane = FocusedPane::Left;
+                self.status = "Single pane mode (showing left)".into();
+            }
+            AppAction::ShowRightOnly => {
+                self.show_split_view = false;
+                self.focused_pane = FocusedPane::Right;
+                self.status = "Single pane mode (showing right)".into();
+            }
+        }
+    }
+
+    fn command_palette_ui(&mut self, ctx: &egui::Context) {
+        use egui::Align2;
+
+        let actions: Vec<Action> = {
+            let query = self.command_palette_query.to_lowercase();
+            self.actions
+                .iter()
+                .copied()
+                .filter(|action| {
+                    query.is_empty()
+                        || action.label.to_lowercase().contains(query.as_str())
+                        || action.id.contains(query.as_str())
+                })
+                .collect()
+        };
+
+        egui::Window::new("Command Palette")
+            .pivot(Align2::CENTER_CENTER)
+            .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label("Type to filter commands. Enter runs the first result.");
+                let text_response = ui.text_edit_singleline(&mut self.command_palette_query);
+                if !text_response.has_focus() {
+                    text_response.request_focus();
+                }
+                ui.separator();
+
+                if actions.is_empty() {
+                    ui.label("No matching commands.");
+                } else {
+                    for action in &actions {
+                        let mut label = action.label.to_string();
+                        if let Some(shortcut) = action.shortcut {
+                            label.push_str(" (");
+                            label.push_str(&format_shortcut(&shortcut));
+                            label.push(')');
+                        }
+                        if ui.button(label).clicked() {
+                            self.perform_action(action.action);
+                            self.close_command_palette();
+                            return;
+                        }
+                    }
+
+                    if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        if let Some(action) = actions.first() {
+                            self.perform_action(action.action);
+                            self.close_command_palette();
+                        }
+                    }
+                }
+
+                if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.close_command_palette();
+                    self.status = "Command palette closed".into();
+                }
+            });
+    }
+
     fn save_focused(&mut self, force_as: bool) {
         let (pane_name, target) = if self.focused_pane == FocusedPane::Left {
             ("left", &mut self.left)
@@ -272,20 +517,6 @@ impl App {
                 Ok(_) => self.status = format!("{} pane saved", pane_name),
                 Err(e) => self.status = format!("Save error: {e}"),
             }
-        }
-    }
-
-    fn toggle_view_mode(&mut self) {
-        self.show_split_view = !self.show_split_view;
-        if self.show_split_view {
-            self.status = "Split view enabled".into();
-        } else {
-            let active = if self.focused_pane == FocusedPane::Left {
-                "left"
-            } else {
-                "right"
-            };
-            self.status = format!("Single pane mode (showing {active})");
         }
     }
 
@@ -401,6 +632,21 @@ impl App {
             }
             Err(e) => self.status = format!("Quick save failed: {e}"),
         };
+    }
+
+    fn close_focused(&mut self) {
+        let (pane_name, target, default_title) = if self.focused_pane == FocusedPane::Left {
+            ("left", &mut self.left, "left")
+        } else {
+            ("right", &mut self.right, "right")
+        };
+
+        target.text.clear();
+        target.path = None;
+        target.dirty = false;
+        target.title = default_title.into();
+
+        self.status = format!("{pane_name} pane cleared");
     }
 
     fn manual_save(&mut self) {
