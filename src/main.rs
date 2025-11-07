@@ -134,22 +134,7 @@ impl eframe::App for App {
         // Top menu
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Open (Ctrl+O)").clicked() {
-                    self.open_dialog(self.focused_pane == FocusedPane::Left);
-                }
-                if ui.button("Save (Ctrl+S)").clicked() {
-                    self.save_focused(false);
-                }
-                if ui.button("Save As (Ctrl+Shift+S)").clicked() {
-                    self.save_as_focused();
-                }
-                if ui.button("Quick Save (Ctrl+Alt+S)").clicked() {
-                    self.quick_save_focused();
-                }
-                if ui.button("Close (Ctrl+W)").clicked() {
-                    self.close_focused();
-                }
-                ui.separator();
+                ui.label("Use Ctrl+Shift+P for commands");
                 ui.horizontal(|ui| {
                     ui.label("Save to:");
                     ui.text_edit_singleline(&mut self.manual_path);
