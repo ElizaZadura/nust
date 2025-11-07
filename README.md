@@ -4,12 +4,12 @@ A simple, dual-pane text editor built with Rust and egui. Perfect for quick note
 
 ## Features
 
-- **Dual-pane interface**: Left and right text editing areas
-- **Focus-based operations**: All save operations work on the currently focused pane
-- **File operations**: Open, Save, Save As, and Quick Save
-- **Keyboard shortcuts**: Ctrl+O (Open), Ctrl+S (Save), Ctrl+Shift+S (Save As)
-- **Status indicators**: Shows which pane is focused and operation status
-- **WSL compatible**: Works in Windows Subsystem for Linux environments
+- **Dual-pane interface**: Left and right text editing areas with quick split/single toggles
+- **Command palette first**: Press `Ctrl+Shift+P` to run any action (open, save, quick save, layout, close, etc.)
+- **Keyboard-driven workflow**: Default shortcuts include `Ctrl+O/S/Shift+S/Alt+S`, `Ctrl+W`, and `Ctrl+1/2/3` for layout swaps
+- **Quick saves**: Timestamped snapshots land in `target/quick_saves/` (or the system temp dir fallback)
+- **Focus status**: Status bar shows which pane is active and reflects command results
+- **WSL friendly**: Designed/tested on WSL2 (Ubuntu) with WSLg and the documented GL fallbacks
 
 ## Quick Start
 
@@ -26,6 +26,13 @@ A simple, dual-pane text editor built with Rust and egui. Perfect for quick note
 source ~/.cargo/env
 LIBGL_ALWAYS_SOFTWARE=1 MESA_GL_VERSION_OVERRIDE=3.3 cargo run
 ```
+
+## Command Palette & Shortcuts
+
+- `Ctrl+Shift+P`: Open/close the palette. Type to filter, use `↑/↓`, press `Enter` to run.
+- Layout shortcuts: `Ctrl+1` (left only), `Ctrl+2` (right only), `Ctrl+3` (split).
+- File actions: `Ctrl+O` (open), `Ctrl+S` (save), `Ctrl+Shift+S` (save as), `Ctrl+Alt+S` (quick save), `Ctrl+W` (close focused pane).
+- Palette entries mirror these actions so you can stay on the keyboard; status messages confirm every operation.
 
 ## WSL Troubleshooting Guide
 
