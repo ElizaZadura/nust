@@ -59,6 +59,7 @@ struct App {
     actions: Vec<Action>,
     show_command_palette: bool,
     command_palette_query: String,
+    command_palette_selected: usize,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -123,6 +124,7 @@ impl Default for App {
             actions: Self::registered_actions(),
             show_command_palette: false,
             command_palette_query: String::new(),
+            command_palette_selected: 0,
         }
     }
 }
@@ -260,16 +262,22 @@ fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane) -> bool {
     };
     ui.heading(title);
     ui.add_space(6.0);
-    let edit = egui::TextEdit::multiline(&mut pane.text)
-        .code_editor()
-        .desired_rows(30)
-        .lock_focus(false)
-        .desired_width(f32::INFINITY);
-    let resp = ui.add(edit);
-    if resp.changed() {
-        pane.dirty = true;
-    }
-    resp.has_focus()
+    let mut had_focus = false;
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            let edit = egui::TextEdit::multiline(&mut pane.text)
+                .code_editor()
+                .desired_rows(30)
+                .lock_focus(false)
+                .desired_width(f32::INFINITY);
+            let resp = ui.add(edit);
+            if resp.changed() {
+                pane.dirty = true;
+            }
+            had_focus = resp.has_focus();
+        });
+    had_focus
 }
 
 impl App {
@@ -378,12 +386,14 @@ impl App {
     fn open_command_palette(&mut self) {
         self.show_command_palette = true;
         self.command_palette_query.clear();
+        self.command_palette_selected = 0;
         self.status = "Command palette opened (Ctrl+Shift+P or Esc to close)".into();
     }
 
     fn close_command_palette(&mut self) {
         self.show_command_palette = false;
         self.command_palette_query.clear();
+        self.command_palette_selected = 0;
     }
 
     fn perform_action(&mut self, action: AppAction) {
@@ -451,19 +461,41 @@ impl App {
                 if !text_response.has_focus() {
                     text_response.request_focus();
                 }
+                if text_response.changed() {
+                    self.command_palette_selected = 0;
+                }
                 ui.separator();
 
                 if actions.is_empty() {
                     ui.label("No matching commands.");
                 } else {
-                    for action in &actions {
+                    if self.command_palette_selected >= actions.len() {
+                        self.command_palette_selected = actions.len().saturating_sub(1);
+                    }
+
+                    let down = ctx.input(|i| i.key_pressed(egui::Key::ArrowDown));
+                    let up = ctx.input(|i| i.key_pressed(egui::Key::ArrowUp));
+                    if down {
+                        self.command_palette_selected =
+                            (self.command_palette_selected + 1) % actions.len();
+                    } else if up {
+                        if self.command_palette_selected == 0 {
+                            self.command_palette_selected = actions.len() - 1;
+                        } else {
+                            self.command_palette_selected -= 1;
+                        }
+                    }
+
+                    for (idx, action) in actions.iter().enumerate() {
                         let mut label = action.label.to_string();
                         if let Some(shortcut) = action.shortcut {
                             label.push_str(" (");
                             label.push_str(&format_shortcut(&shortcut));
                             label.push(')');
                         }
-                        if ui.button(label).clicked() {
+                        let resp = ui.selectable_label(idx == self.command_palette_selected, label);
+                        if resp.clicked() {
+                            self.command_palette_selected = idx;
                             self.perform_action(action.action);
                             self.close_command_palette();
                             return;
@@ -471,7 +503,7 @@ impl App {
                     }
 
                     if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        if let Some(action) = actions.first() {
+                        if let Some(action) = actions.get(self.command_palette_selected) {
                             self.perform_action(action.action);
                             self.close_command_palette();
                         }
