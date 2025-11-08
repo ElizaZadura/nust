@@ -136,7 +136,15 @@ impl eframe::App for App {
         // Top menu
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.label("Use Ctrl+Shift+P for commands");
+                if ui.button("📋 Command Palette").clicked() {
+                    if self.show_command_palette {
+                        self.close_command_palette();
+                    } else {
+                        self.open_command_palette();
+                    }
+                }
+                ui.label("(Ctrl+Shift+P)");
+                ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("Save to:");
                     ui.text_edit_singleline(&mut self.manual_path);
