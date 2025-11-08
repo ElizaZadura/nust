@@ -116,7 +116,7 @@ impl Default for App {
                 ..Default::default()
             },
             status: "ready".into(),
-            manual_path: "output.txt".into(),
+            manual_path: "target/quick_saves/output.txt".into(),
             focused_pane: FocusedPane::Left,
             save_as_path: "".into(),
             show_save_as_input: false,
@@ -136,7 +136,15 @@ impl eframe::App for App {
         // Top menu
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.label("Use Ctrl+Shift+P for commands");
+                if ui.button("📋 Command Palette").clicked() {
+                    if self.show_command_palette {
+                        self.close_command_palette();
+                    } else {
+                        self.open_command_palette();
+                    }
+                }
+                ui.label("(Ctrl+Shift+P)");
+                ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("Save to:");
                     ui.text_edit_singleline(&mut self.manual_path);
@@ -679,6 +687,15 @@ impl App {
         };
 
         let save_path = std::path::PathBuf::from(self.manual_path.trim());
+        
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = save_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                self.status = format!("Failed to create directory: {e}").into();
+                return;
+            }
+        }
+        
         self.status = format!("Saving {} pane to {}...", pane_name, save_path.display());
 
         match target.save_as(save_path) {
