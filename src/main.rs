@@ -11,6 +11,9 @@ struct Pane {
     path: Option<PathBuf>,
     text: String,
     dirty: bool,
+    scroll_offset: f32,
+    scroll_viewport: f32,
+    scroll_content: f32,
 }
 
 impl Pane {
@@ -23,6 +26,9 @@ impl Pane {
             .to_string();
         self.path = Some(p);
         self.dirty = false;
+        self.scroll_offset = 0.0;
+        self.scroll_viewport = 0.0;
+        self.scroll_content = 0.0;
         Ok(())
     }
     fn save_as(&mut self, p: PathBuf) -> Result<()> {
@@ -34,6 +40,9 @@ impl Pane {
             .to_string();
         self.path = Some(p);
         self.dirty = false;
+        self.scroll_offset = 0.0;
+        self.scroll_viewport = 0.0;
+        self.scroll_content = 0.0;
         Ok(())
     }
     fn save(&mut self) -> Result<()> {
@@ -60,6 +69,7 @@ struct App {
     show_command_palette: bool,
     command_palette_query: String,
     command_palette_selected: usize,
+    pending_focus: Option<FocusedPane>,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -99,6 +109,8 @@ enum AppAction {
     SaveAsFocused,
     QuickSaveFocused,
     CloseFocused,
+    FocusNextPane,
+    FocusPreviousPane,
     ShowSplitView,
     ShowLeftOnly,
     ShowRightOnly,
@@ -125,6 +137,7 @@ impl Default for App {
             show_command_palette: false,
             command_palette_query: String::new(),
             command_palette_selected: 0,
+            pending_focus: Some(FocusedPane::Left),
         }
     }
 }
@@ -132,6 +145,7 @@ impl Default for App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.process_shortcuts(ctx);
+        self.handle_page_navigation(ctx);
 
         // Top menu
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
@@ -210,33 +224,39 @@ impl eframe::App for App {
 
         // Left / right panes
         if self.show_split_view {
+            let pending_focus = self.pending_focus;
             egui::SidePanel::left("left")
                 .resizable(true)
                 .default_width(420.0)
                 .show(ctx, |ui| {
-                    if pane_widget(ui, &mut self.left) {
+                    let want_focus = pending_focus == Some(FocusedPane::Left);
+                    if pane_widget(ui, &mut self.left, "left", want_focus) {
                         self.focused_pane = FocusedPane::Left;
                     }
                 });
             egui::CentralPanel::default().show(ctx, |ui| {
-                if pane_widget(ui, &mut self.right) {
+                let want_focus = pending_focus == Some(FocusedPane::Right);
+                if pane_widget(ui, &mut self.right, "right", want_focus) {
                     self.focused_pane = FocusedPane::Right;
                 }
             });
         } else {
             egui::CentralPanel::default().show(ctx, |ui| match self.focused_pane {
                 FocusedPane::Left => {
-                    if pane_widget(ui, &mut self.left) {
+                    let want_focus = pending_focus == Some(FocusedPane::Left);
+                    if pane_widget(ui, &mut self.left, "left", want_focus) {
                         self.focused_pane = FocusedPane::Left;
                     }
                 }
                 FocusedPane::Right => {
-                    if pane_widget(ui, &mut self.right) {
+                    let want_focus = pending_focus == Some(FocusedPane::Right);
+                    if pane_widget(ui, &mut self.right, "right", want_focus) {
                         self.focused_pane = FocusedPane::Right;
                     }
                 }
             });
         }
+        self.pending_focus = None;
 
         if self.show_command_palette {
             self.command_palette_ui(ctx);
@@ -262,7 +282,7 @@ fn format_shortcut(shortcut: &KeyboardShortcut) -> String {
     parts.join("+")
 }
 
-fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane) -> bool {
+fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane, pane_id: &str, request_focus: bool) -> bool {
     let title = if pane.dirty {
         format!("{} •", pane.title)
     } else {
@@ -270,9 +290,12 @@ fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane) -> bool {
     };
     ui.heading(title);
     ui.add_space(6.0);
+    let scroll_id = egui::Id::new(format!("pane_scroll_{pane_id}"));
     let mut had_focus = false;
-    egui::ScrollArea::vertical()
+    let output = egui::ScrollArea::vertical()
         .auto_shrink([false, false])
+        .id_source(scroll_id)
+        .vertical_scroll_offset(pane.scroll_offset)
         .show(ui, |ui| {
             let edit = egui::TextEdit::multiline(&mut pane.text)
                 .code_editor()
@@ -280,11 +303,17 @@ fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane) -> bool {
                 .lock_focus(false)
                 .desired_width(f32::INFINITY);
             let resp = ui.add(edit);
+            if request_focus {
+                resp.request_focus();
+            }
             if resp.changed() {
                 pane.dirty = true;
             }
             had_focus = resp.has_focus();
         });
+    pane.scroll_offset = output.state.offset.y;
+    pane.scroll_viewport = output.inner_rect.height();
+    pane.scroll_content = output.content_size.y;
     had_focus
 }
 
@@ -302,6 +331,11 @@ impl App {
         let ctrl_alt = Modifiers {
             ctrl: true,
             alt: true,
+            ..Default::default()
+        };
+        let ctrl_shift_tab = Modifiers {
+            ctrl: true,
+            shift: true,
             ..Default::default()
         };
         vec![
@@ -334,6 +368,18 @@ impl App {
                 "Close File (Focused Pane)",
                 Some(KeyboardShortcut::new(ctrl, egui::Key::W)),
                 AppAction::CloseFocused,
+            ),
+            Action::new(
+                "focus_next",
+                "Focus Next Pane",
+                Some(KeyboardShortcut::new(ctrl, egui::Key::Tab)),
+                AppAction::FocusNextPane,
+            ),
+            Action::new(
+                "focus_previous",
+                "Focus Previous Pane",
+                Some(KeyboardShortcut::new(ctrl_shift_tab, egui::Key::Tab)),
+                AppAction::FocusPreviousPane,
             ),
             Action::new(
                 "layout_split",
@@ -391,6 +437,34 @@ impl App {
         }
     }
 
+    fn handle_page_navigation(&mut self, ctx: &egui::Context) {
+        if self.show_command_palette {
+            return;
+        }
+        let (page_down, page_up) = ctx.input_mut(|i| {
+            let down = i.consume_key(Modifiers::NONE, egui::Key::PageDown);
+            let up = i.consume_key(Modifiers::NONE, egui::Key::PageUp);
+            (down, up)
+        });
+        if !page_down && !page_up {
+            return;
+        }
+        let pane = if self.focused_pane == FocusedPane::Left {
+            &mut self.left
+        } else {
+            &mut self.right
+        };
+        let viewport = pane.scroll_viewport.max(1.0);
+        let max_offset = (pane.scroll_content - viewport).max(0.0);
+        let page_delta = viewport * 0.9;
+        if page_down {
+            pane.scroll_offset = (pane.scroll_offset + page_delta).min(max_offset);
+        }
+        if page_up {
+            pane.scroll_offset = (pane.scroll_offset - page_delta).max(0.0);
+        }
+    }
+
     fn open_command_palette(&mut self) {
         self.show_command_palette = true;
         self.command_palette_query.clear();
@@ -421,9 +495,40 @@ impl App {
             AppAction::CloseFocused => {
                 self.close_focused();
             }
+            AppAction::FocusNextPane => {
+                self.focused_pane = match self.focused_pane {
+                    FocusedPane::Left => FocusedPane::Right,
+                    FocusedPane::Right => FocusedPane::Left,
+                };
+                self.pending_focus = Some(self.focused_pane);
+                self.status = format!(
+                    "Focused {} pane",
+                    if self.focused_pane == FocusedPane::Left {
+                        "left"
+                    } else {
+                        "right"
+                    }
+                );
+            }
+            AppAction::FocusPreviousPane => {
+                self.focused_pane = match self.focused_pane {
+                    FocusedPane::Left => FocusedPane::Right,
+                    FocusedPane::Right => FocusedPane::Left,
+                };
+                self.pending_focus = Some(self.focused_pane);
+                self.status = format!(
+                    "Focused {} pane",
+                    if self.focused_pane == FocusedPane::Left {
+                        "left"
+                    } else {
+                        "right"
+                    }
+                );
+            }
             AppAction::ShowSplitView => {
                 if !self.show_split_view {
                     self.show_split_view = true;
+                    self.pending_focus = Some(self.focused_pane);
                     self.status = "Split view enabled".into();
                 } else {
                     self.status = "Split view already active".into();
@@ -432,11 +537,13 @@ impl App {
             AppAction::ShowLeftOnly => {
                 self.show_split_view = false;
                 self.focused_pane = FocusedPane::Left;
+                self.pending_focus = Some(FocusedPane::Left);
                 self.status = "Single pane mode (showing left)".into();
             }
             AppAction::ShowRightOnly => {
                 self.show_split_view = false;
                 self.focused_pane = FocusedPane::Right;
+                self.pending_focus = Some(FocusedPane::Right);
                 self.status = "Single pane mode (showing right)".into();
             }
         }
@@ -550,6 +657,7 @@ impl App {
         match rfd::FileDialog::new()
             .set_title("Save As")
             .add_filter("Text/Markdown", &["txt", "md", "log"])
+            .add_filter("All Files", &["*"])
             .save_file()
         {
             Some(p) => {
@@ -584,6 +692,7 @@ impl App {
         match rfd::FileDialog::new()
             .set_title("Open")
             .add_filter("Text/Markdown", &["txt", "md", "log"])
+            .add_filter("All Files", &["*"])
             .pick_file()
         {
             Some(p) => {
@@ -597,6 +706,16 @@ impl App {
                     self.status = format!("open error: {e}");
                 } else {
                     self.status = "opened".into();
+                    self.pending_focus = Some(if to_left {
+                        FocusedPane::Left
+                    } else {
+                        FocusedPane::Right
+                    });
+                    self.focused_pane = if to_left {
+                        FocusedPane::Left
+                    } else {
+                        FocusedPane::Right
+                    };
                 }
             }
             None => {
@@ -670,8 +789,12 @@ impl App {
         target.path = None;
         target.dirty = false;
         target.title = default_title.into();
+        target.scroll_offset = 0.0;
+        target.scroll_viewport = 0.0;
+        target.scroll_content = 0.0;
 
         self.status = format!("{pane_name} pane cleared");
+        self.pending_focus = Some(self.focused_pane);
     }
 
     fn manual_save(&mut self) {
@@ -687,7 +810,7 @@ impl App {
         };
 
         let save_path = std::path::PathBuf::from(self.manual_path.trim());
-        
+
         // Create parent directory if it doesn't exist
         if let Some(parent) = save_path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
@@ -695,7 +818,7 @@ impl App {
                 return;
             }
         }
-        
+
         self.status = format!("Saving {} pane to {}...", pane_name, save_path.display());
 
         match target.save_as(save_path) {
