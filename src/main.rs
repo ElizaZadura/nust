@@ -223,8 +223,8 @@ impl eframe::App for App {
         });
 
         // Left / right panes
+        let pending_focus = self.pending_focus;
         if self.show_split_view {
-            let pending_focus = self.pending_focus;
             egui::SidePanel::left("left")
                 .resizable(true)
                 .default_width(420.0)
