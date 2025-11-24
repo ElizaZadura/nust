@@ -64,7 +64,11 @@ struct App {
     focused_pane: FocusedPane,
     save_as_path: String,
     show_save_as_input: bool,
+    show_open_input: bool,
+    open_input_path: String,
+    open_to_left: bool,
     show_split_view: bool,
+    word_wrap: bool,
     actions: Vec<Action>,
     show_command_palette: bool,
     command_palette_query: String,
@@ -108,12 +112,14 @@ enum AppAction {
     SaveFocused,
     SaveAsFocused,
     QuickSaveFocused,
+    ManualSaveFocused,
     CloseFocused,
     FocusNextPane,
     FocusPreviousPane,
     ShowSplitView,
     ShowLeftOnly,
     ShowRightOnly,
+    ToggleWordWrap,
 }
 
 impl Default for App {
@@ -132,7 +138,11 @@ impl Default for App {
             focused_pane: FocusedPane::Left,
             save_as_path: "".into(),
             show_save_as_input: false,
+            show_open_input: false,
+            open_input_path: "".into(),
+            open_to_left: true,
             show_split_view: true,
+            word_wrap: false,
             actions: Self::registered_actions(),
             show_command_palette: false,
             command_palette_query: String::new(),
@@ -207,6 +217,61 @@ impl eframe::App for App {
             }
         }
 
+        // Open File dialog fallback
+        if self.show_open_input {
+            let mut should_open = false;
+            let mut should_cancel = false;
+            let mut open_path = String::new();
+
+            egui::Window::new("Open File")
+                .open(&mut self.show_open_input)
+                .show(ctx, |ui| {
+                    ui.label("Enter file path:");
+                    ui.text_edit_singleline(&mut self.open_input_path);
+                    ui.horizontal(|ui| {
+                        if ui.button("Open").clicked() {
+                            if !self.open_input_path.trim().is_empty() {
+                                open_path = self.open_input_path.trim().to_string();
+                                should_open = true;
+                            }
+                        }
+                        if ui.button("Cancel").clicked() {
+                            should_cancel = true;
+                        }
+                    });
+                });
+
+            if should_open {
+                let path = std::path::PathBuf::from(open_path);
+                let target = if self.open_to_left {
+                    &mut self.left
+                } else {
+                    &mut self.right
+                };
+                self.status = format!("Loading: {}", path.display());
+                if let Err(e) = target.load_from(path) {
+                    self.status = format!("Open error: {e}");
+                } else {
+                    self.status = "File opened".into();
+                    self.pending_focus = Some(if self.open_to_left {
+                        FocusedPane::Left
+                    } else {
+                        FocusedPane::Right
+                    });
+                    self.focused_pane = if self.open_to_left {
+                        FocusedPane::Left
+                    } else {
+                        FocusedPane::Right
+                    };
+                }
+                self.show_open_input = false;
+                self.open_input_path.clear();
+            } else if should_cancel {
+                self.show_open_input = false;
+                self.open_input_path.clear();
+            }
+        }
+
         // Status bar
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -230,13 +295,13 @@ impl eframe::App for App {
                 .default_width(420.0)
                 .show(ctx, |ui| {
                     let want_focus = pending_focus == Some(FocusedPane::Left);
-                    if pane_widget(ui, &mut self.left, "left", want_focus) {
+                    if pane_widget(ui, &mut self.left, "left", want_focus, self.word_wrap) {
                         self.focused_pane = FocusedPane::Left;
                     }
                 });
             egui::CentralPanel::default().show(ctx, |ui| {
                 let want_focus = pending_focus == Some(FocusedPane::Right);
-                if pane_widget(ui, &mut self.right, "right", want_focus) {
+                if pane_widget(ui, &mut self.right, "right", want_focus, self.word_wrap) {
                     self.focused_pane = FocusedPane::Right;
                 }
             });
@@ -244,13 +309,13 @@ impl eframe::App for App {
             egui::CentralPanel::default().show(ctx, |ui| match self.focused_pane {
                 FocusedPane::Left => {
                     let want_focus = pending_focus == Some(FocusedPane::Left);
-                    if pane_widget(ui, &mut self.left, "left", want_focus) {
+                    if pane_widget(ui, &mut self.left, "left", want_focus, self.word_wrap) {
                         self.focused_pane = FocusedPane::Left;
                     }
                 }
                 FocusedPane::Right => {
                     let want_focus = pending_focus == Some(FocusedPane::Right);
-                    if pane_widget(ui, &mut self.right, "right", want_focus) {
+                    if pane_widget(ui, &mut self.right, "right", want_focus, self.word_wrap) {
                         self.focused_pane = FocusedPane::Right;
                     }
                 }
@@ -282,7 +347,7 @@ fn format_shortcut(shortcut: &KeyboardShortcut) -> String {
     parts.join("+")
 }
 
-fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane, pane_id: &str, request_focus: bool) -> bool {
+fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane, pane_id: &str, request_focus: bool, word_wrap: bool) -> bool {
     let title = if pane.dirty {
         format!("{} •", pane.title)
     } else {
@@ -290,18 +355,34 @@ fn pane_widget(ui: &mut egui::Ui, pane: &mut Pane, pane_id: &str, request_focus:
     };
     ui.heading(title);
     ui.add_space(6.0);
-    let scroll_id = egui::Id::new(format!("pane_scroll_{pane_id}"));
+    // Include word_wrap in the scroll ID so it gets recreated when word wrap changes
+    let scroll_id = egui::Id::new(format!("pane_scroll_{pane_id}_{word_wrap}"));
     let mut had_focus = false;
     let output = egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .id_source(scroll_id)
         .vertical_scroll_offset(pane.scroll_offset)
         .show(ui, |ui| {
-            let edit = egui::TextEdit::multiline(&mut pane.text)
+            // Get available width to ensure TextEdit fills the panel
+            let available_width = ui.available_width();
+            
+            // Include word_wrap in the edit ID so egui knows to recreate the widget
+            let edit_id = egui::Id::new(format!("pane_edit_{pane_id}_{word_wrap}"));
+            
+            let mut edit = egui::TextEdit::multiline(&mut pane.text)
                 .code_editor()
                 .desired_rows(30)
                 .lock_focus(false)
-                .desired_width(f32::INFINITY);
+                .id(edit_id);
+            
+            if word_wrap {
+                // Word wrap: use available width so text wraps within the panel
+                edit = edit.desired_width(available_width);
+            } else {
+                // No word wrap: use infinite width for horizontal scrolling
+                edit = edit.desired_width(f32::INFINITY);
+            }
+            
             let resp = ui.add(edit);
             if request_focus {
                 resp.request_focus();
@@ -364,6 +445,12 @@ impl App {
                 AppAction::QuickSaveFocused,
             ),
             Action::new(
+                "manual_save",
+                "Manual Save (to path)",
+                None,
+                AppAction::ManualSaveFocused,
+            ),
+            Action::new(
                 "close_file",
                 "Close File (Focused Pane)",
                 Some(KeyboardShortcut::new(ctrl, egui::Key::W)),
@@ -398,6 +485,19 @@ impl App {
                 "Show Right Only",
                 Some(KeyboardShortcut::new(ctrl, egui::Key::Num2)),
                 AppAction::ShowRightOnly,
+            ),
+            Action::new(
+                "toggle_word_wrap",
+                "Toggle Word Wrap",
+                Some(KeyboardShortcut::new(
+                    Modifiers {
+                        ctrl: true,
+                        alt: true,
+                        ..Default::default()
+                    },
+                    egui::Key::W,
+                )),
+                AppAction::ToggleWordWrap,
             ),
         ]
     }
@@ -492,6 +592,9 @@ impl App {
             AppAction::QuickSaveFocused => {
                 self.quick_save_focused();
             }
+            AppAction::ManualSaveFocused => {
+                self.manual_save();
+            }
             AppAction::CloseFocused => {
                 self.close_focused();
             }
@@ -545,6 +648,16 @@ impl App {
                 self.focused_pane = FocusedPane::Right;
                 self.pending_focus = Some(FocusedPane::Right);
                 self.status = "Single pane mode (showing right)".into();
+            }
+            AppAction::ToggleWordWrap => {
+                self.word_wrap = !self.word_wrap;
+                self.status = if self.word_wrap {
+                    "Word wrap enabled".into()
+                } else {
+                    "Word wrap disabled".into()
+                };
+                // Force repaint to update the UI
+                // Note: egui should auto-repaint, but we can request it explicitly if needed
             }
         }
     }
@@ -719,7 +832,10 @@ impl App {
                 }
             }
             None => {
-                self.status = "Open cancelled".into();
+                // File dialog failed (common in WSL), show input dialog as fallback
+                self.show_open_input = true;
+                self.open_to_left = to_left;
+                self.status = "File dialog not available, using input dialog".into();
             }
         }
     }
