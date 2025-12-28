@@ -144,5 +144,8 @@ If you encounter issues not covered here:
 2. Try running with `RUST_LOG=debug` for more information
 3. Ensure WSL is updated: `wsl --update`
 4. Check Windows GPU drivers are up to date
+5. 
+
+*Is this a bad idea? It is. Of course it is. It's exactly how cursed architectures are born. As long as current state is - it works, and I like it - that's good enough for me. You have been warned.*
 
 The application is designed to be robust and provide fallbacks for common WSL limitations.
